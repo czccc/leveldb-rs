@@ -79,10 +79,10 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
     fn new_node(&mut self, key: Key, _height: usize) -> *mut Node<Key> {
         unsafe {
             let layout = std::mem::size_of::<Node<Key>>();
-            let p = self.arena.alloc(layout);
-            (*(p as *mut Node<Key>)).key = key;
-            (*(p as *mut Node<Key>)).next = Default::default();
-            p as *mut Node<Key>
+            let p = self.arena.alloc(layout) as *mut Node<Key>;
+            ptr::write(&mut (*p).key, key);
+            (*p).next = Default::default();
+            p
         }
     }
     fn random_height(&mut self) -> usize {
@@ -208,18 +208,17 @@ impl<'a, Key: Default + PartialEq + PartialOrd> Iter<'a, Key> {
     }
 }
 
-// impl<Key: Default + PartialEq + PartialOrd> Drop for SkipList<Key> {
-//     fn drop(&mut self) {
-//         let mut node = self.head;
-//         while !node.is_null() {
-//             unsafe {
-//                 ptr::drop_in_place(&mut (*node).key);
-//                 // let _: Key = (*node).key;
-//                 node = (*node).next(0);
-//             }
-//         }
-//     }
-// }
+impl<Key: Default + PartialEq + PartialOrd> Drop for SkipList<Key> {
+    fn drop(&mut self) {
+        let mut node = self.head;
+        while !node.is_null() {
+            unsafe {
+                ptr::drop_in_place(&mut (*node).key);
+                node = (*node).next(0);
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -232,6 +231,9 @@ mod tests {
         let node1 = list.new_node(String::from("node1"), 0);
         let node2 = list.new_node(String::from("node2"), 0);
         let node3 = list.new_node(String::from("node3"), 0);
+        // let node1 = list.new_node("node1", 0);
+        // let node2 = list.new_node("node2", 0);
+        // let node3 = list.new_node("node3", 0);
         // let node1 = list.new_node(1, 0);
         // let node2 = list.new_node(2, 0);
         // let node3 = list.new_node(2, 0);
@@ -254,6 +256,11 @@ mod tests {
         for i in (MAX_HEIGHT / 2)..MAX_HEIGHT {
             assert!(unsafe { &*node1 }.next(i) == node3);
             assert!(unsafe { &*node2 }.next(i) == ptr::null_mut());
+        }
+        unsafe {
+            ptr::drop_in_place(&mut (*node1).key);
+            ptr::drop_in_place(&mut (*node2).key);
+            ptr::drop_in_place(&mut (*node3).key);
         }
     }
 
@@ -335,6 +342,73 @@ mod tests {
             for k in keys.iter().collect::<Vec<&u32>>().iter().rev() {
                 assert!(iter.valid());
                 assert_eq!(iter.key(), *k);
+                iter.prev();
+            }
+        }
+    }
+    #[test]
+    fn list_string() {
+        const N: u32 = 2000;
+        const R: u32 = 5000;
+        let mut rnd = Random::new(1000);
+        let mut keys = std::collections::HashSet::new();
+        let arena = Arena::new();
+        let mut list = SkipList::new(arena);
+        assert!(!list.contains(&String::from("10")));
+        for i in 0..N {
+            let key = rnd.next() % R;
+            if !keys.contains(&key) {
+                keys.insert(key);
+                list.insert(format!("{:06}", key));
+            }
+        }
+        let mut keys = keys.into_iter().collect::<Vec<u32>>();
+        keys.sort();
+
+        for i in 0..R {
+            if list.contains(&format!("{:06}", i)) {
+                assert!(keys.contains(&i));
+            } else {
+                assert!(!keys.contains(&i));
+            }
+        }
+        {
+            let mut iter = Iter::new(&list);
+            assert!(!iter.valid());
+            iter.seek(&format!("{:06}", 0));
+            assert!(iter.valid());
+            assert!(iter.key() == &format!("{:06}", keys.iter().nth(0).unwrap()));
+            iter.seek_to_first();
+            assert!(iter.valid());
+            assert!(iter.key() == &format!("{:06}", keys.iter().nth(0).unwrap()));
+            iter.seek_to_last();
+            assert!(iter.valid());
+            assert!(iter.key() == &format!("{:06}", keys.iter().last().unwrap()));
+        }
+        for i in 0..R {
+            let mut iter = Iter::new(&list);
+            iter.seek(&format!("{:06}", i));
+            let mut model_iter = keys.iter().skip_while(|k| **k < i);
+            for j in 0..3 {
+                match model_iter.next() {
+                    Some(k) => {
+                        assert!(iter.valid());
+                        assert_eq!(iter.key(), &format!("{:06}", k));
+                        iter.next();
+                    }
+                    None => {
+                        assert!(!iter.valid());
+                        break;
+                    }
+                }
+            }
+        }
+        {
+            let mut iter = Iter::new(&list);
+            iter.seek_to_last();
+            for k in keys.iter().collect::<Vec<&u32>>().iter().rev() {
+                assert!(iter.valid());
+                assert_eq!(iter.key(), &format!("{:06}", *k));
                 iter.prev();
             }
         }
