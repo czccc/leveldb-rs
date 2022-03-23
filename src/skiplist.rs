@@ -7,12 +7,12 @@ use crate::utils::{Arena, Random};
 
 const MAX_HEIGHT: usize = 12;
 
-struct Node<Key: Default + PartialEq + PartialOrd> {
+struct Node<Key> {
     pub key: Key,
     next: [AtomicPtr<Node<Key>>; MAX_HEIGHT],
 }
 
-impl<Key: Default + PartialEq + PartialOrd> Node<Key> {
+impl<Key> Node<Key> {
     fn next(&self, level: usize) -> *mut Node<Key> {
         assert!(level < MAX_HEIGHT);
         self.next[level].load(Ordering::Acquire)
@@ -31,14 +31,17 @@ impl<Key: Default + PartialEq + PartialOrd> Node<Key> {
     }
 }
 
-pub struct SkipList<Key: Default + PartialEq + PartialOrd> {
+pub struct SkipList<Key> {
     head: *mut Node<Key>,
     max_height: AtomicUsize,
     rand: Random,
     arena: Arena,
 }
 
-impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
+impl<Key> SkipList<Key>
+where
+    Key: Ord,
+{
     pub fn new(arena: Arena) -> Self {
         let mut list = Self {
             head: ptr::null_mut(),
@@ -46,7 +49,7 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
             rand: Random::new(0xdeadbeef),
             arena,
         };
-        list.head = list.new_node(Key::default(), MAX_HEIGHT);
+        list.head = list.new_head();
         list
     }
     pub fn insert(&mut self, key: Key) {
@@ -75,7 +78,19 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
     }
 }
 
-impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
+impl<Key> SkipList<Key>
+where
+    Key: Ord,
+{
+    fn new_head(&mut self) -> *mut Node<Key> {
+        unsafe {
+            let layout = std::mem::size_of::<Node<Key>>();
+            let p = self.arena.alloc(layout) as *mut Node<Key>;
+            ptr::write_bytes(&mut (*p).key, 0, 1);
+            (*p).next = Default::default();
+            p
+        }
+    }
     fn new_node(&mut self, key: Key, _height: usize) -> *mut Node<Key> {
         unsafe {
             let layout = std::mem::size_of::<Node<Key>>();
@@ -164,12 +179,30 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
     }
 }
 
-pub struct Iter<'a, Key: Default + PartialEq + PartialOrd> {
+impl<Key> Drop for SkipList<Key> {
+    fn drop(&mut self) {
+        let mut node = self.head;
+        while !node.is_null() {
+            unsafe {
+                ptr::drop_in_place(&mut (*node).key);
+                node = (*node).next(0);
+            }
+        }
+    }
+}
+
+pub struct Iter<'a, Key>
+where
+    Key: Ord,
+{
     list: &'a SkipList<Key>,
     node: *mut Node<Key>,
 }
 
-impl<'a, Key: Default + PartialEq + PartialOrd> Iter<'a, Key> {
+impl<'a, Key> Iter<'a, Key>
+where
+    Key: Ord,
+{
     pub fn new(list: &'a SkipList<Key>) -> Self {
         Self {
             list,
@@ -204,18 +237,6 @@ impl<'a, Key: Default + PartialEq + PartialOrd> Iter<'a, Key> {
         self.node = self.list.find_last();
         if std::ptr::eq(self.node, self.list.head) {
             self.node = ptr::null_mut();
-        }
-    }
-}
-
-impl<Key: Default + PartialEq + PartialOrd> Drop for SkipList<Key> {
-    fn drop(&mut self) {
-        let mut node = self.head;
-        while !node.is_null() {
-            unsafe {
-                ptr::drop_in_place(&mut (*node).key);
-                node = (*node).next(0);
-            }
         }
     }
 }
