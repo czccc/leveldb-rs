@@ -1,10 +1,9 @@
 use std::{
-    alloc::{alloc, Layout},
     ptr,
     sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
 };
 
-use crate::utils::random::Random;
+use crate::utils::{Arena, Random};
 
 const MAX_HEIGHT: usize = 12;
 
@@ -14,15 +13,6 @@ struct Node<Key: Default + PartialEq + PartialOrd> {
 }
 
 impl<Key: Default + PartialEq + PartialOrd> Node<Key> {
-    fn new(key: Key, _height: usize) -> *mut Self {
-        unsafe {
-            let layout = Layout::new::<Self>();
-            let p = alloc(layout);
-            (*(p as *mut Self)).key = key;
-            (*(p as *mut Self)).next = Default::default();
-            p as *mut Self
-        }
-    }
     fn next(&self, level: usize) -> *mut Node<Key> {
         assert!(level < MAX_HEIGHT);
         self.next[level].load(Ordering::Acquire)
@@ -45,15 +35,19 @@ pub struct SkipList<Key: Default + PartialEq + PartialOrd> {
     head: *mut Node<Key>,
     max_height: AtomicUsize,
     rand: Random,
+    arena: Arena,
 }
 
 impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
-    pub fn new() -> Self {
-        Self {
-            head: Node::<Key>::new(Key::default(), 0),
+    pub fn new(arena: Arena) -> Self {
+        let mut list = Self {
+            head: ptr::null_mut(),
             max_height: AtomicUsize::new(1),
             rand: Random::new(0xdeadbeef),
-        }
+            arena,
+        };
+        list.head = list.new_node(Key::default(), MAX_HEIGHT);
+        list
     }
     pub fn insert(&mut self, key: Key) {
         let mut prev = [ptr::null_mut(); MAX_HEIGHT];
@@ -66,7 +60,7 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
             }
             self.max_height.store(height, Ordering::Relaxed);
         }
-        let x = Node::new(key, height);
+        let x = self.new_node(key, height);
         for (i, p) in prev.into_iter().enumerate().take(height) {
             assert!(!p.is_null());
             unsafe {
@@ -82,6 +76,15 @@ impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
 }
 
 impl<Key: Default + PartialEq + PartialOrd> SkipList<Key> {
+    fn new_node(&mut self, key: Key, _height: usize) -> *mut Node<Key> {
+        unsafe {
+            let layout = std::mem::size_of::<Node<Key>>();
+            let p = self.arena.alloc(layout);
+            (*(p as *mut Node<Key>)).key = key;
+            (*(p as *mut Node<Key>)).next = Default::default();
+            p as *mut Node<Key>
+        }
+    }
     fn random_height(&mut self) -> usize {
         const BRANCHING_FACTOR: usize = 4;
         let mut height = 1;
@@ -205,15 +208,33 @@ impl<'a, Key: Default + PartialEq + PartialOrd> Iter<'a, Key> {
     }
 }
 
+// impl<Key: Default + PartialEq + PartialOrd> Drop for SkipList<Key> {
+//     fn drop(&mut self) {
+//         let mut node = self.head;
+//         while !node.is_null() {
+//             unsafe {
+//                 ptr::drop_in_place(&mut (*node).key);
+//                 // let _: Key = (*node).key;
+//                 node = (*node).next(0);
+//             }
+//         }
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn list_node() {
-        let node1 = Node::new(String::from("node1"), 0);
-        let node2 = Node::new(String::from("node2"), 0);
-        let node3 = Node::new(String::from("node3"), 0);
+        let arena = Arena::new();
+        let mut list = SkipList::new(arena);
+        let node1 = list.new_node(String::from("node1"), 0);
+        let node2 = list.new_node(String::from("node2"), 0);
+        let node3 = list.new_node(String::from("node3"), 0);
+        // let node1 = list.new_node(1, 0);
+        // let node2 = list.new_node(2, 0);
+        // let node3 = list.new_node(2, 0);
         for i in 0..MAX_HEIGHT {
             assert_eq!(unsafe { &*node1 }.next(i), ptr::null_mut());
             assert_eq!(unsafe { &*node2 }.next(i), ptr::null_mut());
@@ -235,9 +256,11 @@ mod tests {
             assert!(unsafe { &*node2 }.next(i) == ptr::null_mut());
         }
     }
+
     #[test]
     fn list_empty() {
-        let list = SkipList::new();
+        let arena = Arena::new();
+        let list = SkipList::new(arena);
         assert!(!list.contains(&10));
 
         let mut iter = Iter::new(&list);
@@ -255,7 +278,8 @@ mod tests {
         const R: u32 = 5000;
         let mut rnd = Random::new(1000);
         let mut keys = std::collections::HashSet::new();
-        let mut list = SkipList::new();
+        let arena = Arena::new();
+        let mut list = SkipList::new(arena);
         assert!(!list.contains(&10));
         for i in 0..N {
             let key = rnd.next() % R;
