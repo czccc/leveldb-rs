@@ -1,4 +1,5 @@
 use std::{
+    ops::Index,
     ptr,
     sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
 };
@@ -7,9 +8,22 @@ use crate::utils::{Arena, Random};
 
 const MAX_HEIGHT: usize = 12;
 
+#[repr(C)]
+struct Tower<Key> {
+    pointers: [AtomicPtr<Node<Key>>; 1],
+}
+
+impl<Key> Index<usize> for Tower<Key> {
+    type Output = AtomicPtr<Node<Key>>;
+    fn index(&self, index: usize) -> &AtomicPtr<Node<Key>> {
+        unsafe { self.pointers.get_unchecked(index) }
+    }
+}
+
+#[repr(C)]
 struct Node<Key> {
     pub key: Key,
-    next: [AtomicPtr<Node<Key>>; MAX_HEIGHT],
+    next: Tower<Key>,
 }
 
 impl<Key> Node<Key> {
@@ -84,19 +98,27 @@ where
 {
     fn new_head(&mut self) -> *mut Node<Key> {
         unsafe {
-            let layout = std::mem::size_of::<Node<Key>>();
-            let p = self.arena.alloc(layout) as *mut Node<Key>;
+            let node_size = std::mem::size_of::<Node<Key>>();
+            let ptr_size = std::mem::size_of::<AtomicPtr<Node<Key>>>();
+            let p = self
+                .arena
+                .alloc_aligned(node_size + ptr_size * (MAX_HEIGHT - 1))
+                as *mut Node<Key>;
             ptr::write_bytes(&mut (*p).key, 0, 1);
-            (*p).next = Default::default();
+            ptr::write_bytes((*p).next.pointers.as_mut_ptr(), 0, MAX_HEIGHT);
             p
         }
     }
-    fn new_node(&mut self, key: Key, _height: usize) -> *mut Node<Key> {
+    fn new_node(&mut self, key: Key, height: usize) -> *mut Node<Key> {
         unsafe {
-            let layout = std::mem::size_of::<Node<Key>>();
-            let p = self.arena.alloc(layout) as *mut Node<Key>;
+            let node_size = std::mem::size_of::<Node<Key>>();
+            let ptr_size = std::mem::size_of::<AtomicPtr<Node<Key>>>();
+            let p = self
+                .arena
+                .alloc_aligned(node_size + ptr_size * (height - 1))
+                as *mut Node<Key>;
             ptr::write(&mut (*p).key, key);
-            (*p).next = Default::default();
+            ptr::write_bytes((*p).next.pointers.as_mut_ptr(), 0, height);
             p
         }
     }
@@ -249,15 +271,15 @@ mod tests {
     fn list_node() {
         let arena = Arena::new();
         let mut list = SkipList::new(arena);
-        let node1 = list.new_node(String::from("node1"), 0);
-        let node2 = list.new_node(String::from("node2"), 0);
-        let node3 = list.new_node(String::from("node3"), 0);
-        // let node1 = list.new_node("node1", 0);
-        // let node2 = list.new_node("node2", 0);
-        // let node3 = list.new_node("node3", 0);
-        // let node1 = list.new_node(1, 0);
-        // let node2 = list.new_node(2, 0);
-        // let node3 = list.new_node(2, 0);
+        let node1 = list.new_node(String::from("node1"), MAX_HEIGHT);
+        let node2 = list.new_node(String::from("node2"), MAX_HEIGHT);
+        let node3 = list.new_node(String::from("node3"), MAX_HEIGHT);
+        // let node1 = list.new_node("node1", MAX_HEIGHT);
+        // let node2 = list.new_node("node2", MAX_HEIGHT);
+        // let node3 = list.new_node("node3", MAX_HEIGHT);
+        // let node1 = list.new_node(1, MAX_HEIGHT);
+        // let node2 = list.new_node(2, MAX_HEIGHT);
+        // let node3 = list.new_node(2, MAX_HEIGHT);
         for i in 0..MAX_HEIGHT {
             assert_eq!(unsafe { &*node1 }.next(i), ptr::null_mut());
             assert_eq!(unsafe { &*node2 }.next(i), ptr::null_mut());
