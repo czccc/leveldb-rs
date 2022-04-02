@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables)]
 
 mod skiplist;
+mod slice;
 mod utils;
 
 #[cfg(test)]
