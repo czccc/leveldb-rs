@@ -52,6 +52,9 @@ pub struct SkipList<Key> {
     arena: Arena,
 }
 
+unsafe impl<T> Send for SkipList<T> {}
+unsafe impl<T> Sync for SkipList<T> {}
+
 impl<Key> SkipList<Key>
 where
     Key: Ord,
@@ -265,13 +268,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rand;
-    use std::{
-        collections::hash_map::DefaultHasher,
-        hash::{Hash, Hasher},
-        sync::{atomic::AtomicBool, Arc, Condvar, Mutex},
-        thread,
-    };
 
     use super::*;
 
@@ -464,6 +460,19 @@ mod tests {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod concurrent_tests {
+    use rand;
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+        sync::{atomic::AtomicBool, Arc, Condvar, Mutex},
+        thread,
+    };
+
+    use super::*;
 
     const K: u64 = 4;
     type Key = u64;
@@ -487,7 +496,7 @@ mod tests {
 
     struct ConcurrentTest {
         current: State,
-        arena: Arena,
+        // arena: Arena,
         list: SkipList<Key>,
     }
 
@@ -525,10 +534,11 @@ mod tests {
         fn new() -> Self {
             Self {
                 current: State::new(),
-                arena: Arena::new(),
+                // arena: Arena::new(),
                 list: SkipList::new(Arena::new()),
             }
         }
+        // REQUIRES: External synchronization
         fn write_step(&mut self, rnd: &mut Random) {
             let k = rnd.next() % K as u32;
             let g = self.current.get(k as usize) + 1;
@@ -537,6 +547,7 @@ mod tests {
             self.current.set(k as usize, g);
         }
         fn read_step(&mut self, rnd: &mut Random) {
+            // Remember the initial committed state of the skiplist.
             let initial_state = State::new();
             for i in 0..K as usize {
                 initial_state.set(i, self.current.get(i));
@@ -625,8 +636,9 @@ mod tests {
             self.state_cv.notify_all();
         }
     }
-    fn concurrent_reader(arg: Arc<TestState>) {
-        let state = unsafe { &mut *arg };
+    fn concurrent_reader(arg: AtomicPtr<TestState>) {
+        let state = unsafe { &mut *(arg.load(Ordering::Relaxed)) };
+        // let state = arg;
         let mut rnd = Random::new(state.seed as u32);
         let mut reads = 0;
         state.change(ReaderState::RUNNING);
@@ -645,8 +657,8 @@ mod tests {
             if i % 100 == 0 {
                 eprintln!("Run {} of {}", i, N);
             }
-            let state = Arc::new(TestState::new(seed + i));
-            let state_ = state.clone();
+            let mut state = TestState::new(seed + i);
+            let state_ = AtomicPtr::new(&mut state as *mut _);
             let _t = thread::spawn(move || {
                 concurrent_reader(state_);
             });
