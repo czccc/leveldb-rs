@@ -2,7 +2,10 @@
 
 mod skiplist;
 mod slice;
+mod status;
 mod utils;
+
+use slice::Slice;
 
 #[cfg(test)]
 mod tests {

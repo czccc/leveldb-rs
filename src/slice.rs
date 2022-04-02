@@ -1,40 +1,40 @@
 use std::{cmp::Ordering, ops::Index, slice};
 
 #[derive(Copy, Clone)]
-struct Slice {
+pub struct Slice {
     data: *const u8,
     size: usize,
 }
 
 impl Slice {
-    fn new(data: *const u8, size: usize) -> Self {
+    pub fn new(data: *const u8, size: usize) -> Self {
         Self { data, size }
     }
-    fn from_str(s: &str) -> Self {
+    pub fn from_str(s: &str) -> Self {
         Self {
             data: s.as_ptr(),
             size: s.len(),
         }
     }
-    fn data(&self) -> *const u8 {
+    pub fn data(&self) -> *const u8 {
         self.data
     }
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.size
     }
-    fn empty(&self) -> bool {
+    pub fn empty(&self) -> bool {
         self.size == 0
     }
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.data = "".as_ptr();
         self.size = 0;
     }
-    fn remove_prefix(&mut self, n: usize) {
+    pub fn remove_prefix(&mut self, n: usize) {
         assert!(n <= self.size());
         self.data = unsafe { self.data.add(n) };
         self.size -= n;
     }
-    fn starts_with(&self, x: &Self) -> bool {
+    pub fn starts_with(&self, x: &Self) -> bool {
         (self.size >= x.size) && {
             for i in 0..x.size {
                 if self[i] != x[i] {
@@ -44,7 +44,7 @@ impl Slice {
             true
         }
     }
-    fn compare(&self, x: &Self) -> isize {
+    pub fn compare(&self, x: &Self) -> isize {
         match self.cmp(x) {
             Ordering::Less => -1,
             Ordering::Equal => 0,
