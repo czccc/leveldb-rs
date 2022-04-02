@@ -668,7 +668,7 @@ mod concurrent_tests {
             }
             state.quit_flag.store(true, Ordering::Release);
             state.wait(ReaderState::DONE);
-            // t.join().unwrap();
+            _t.join().unwrap();
         }
     }
     #[test]
