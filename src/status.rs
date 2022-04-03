@@ -116,20 +116,19 @@ impl Status {
         let len1 = msg.size();
         let len2 = msg2.size();
         let size = if len2 == 0 { len1 } else { len1 + len2 + 2 };
+        let size_len = std::mem::size_of::<usize>();
         unsafe {
-            let result =
-                alloc(Layout::from_size_align(size + 5, std::mem::align_of::<*mut u8>()).unwrap());
-            ptr::copy_nonoverlapping(
-                &size as *const usize as *const u8,
-                result,
-                std::mem::size_of_val(&size),
+            let result = alloc(
+                Layout::from_size_align(size + size_len + 1, std::mem::align_of::<*mut u8>())
+                    .unwrap(),
             );
-            ptr::write(result.add(4), code.into());
-            ptr::copy_nonoverlapping(msg.data(), result.add(5), len1);
+            ptr::copy_nonoverlapping(&size as *const usize as *const u8, result, size_len);
+            ptr::write(result.add(size_len), code.into());
+            ptr::copy_nonoverlapping(msg.data(), result.add(size_len + 1), len1);
             if len2 != 0 {
-                ptr::write(result.add(5 + len1), ':' as u8);
-                ptr::write(result.add(6 + len1), ' ' as u8);
-                ptr::copy_nonoverlapping(msg2.data(), result.add(7 + len1), len2);
+                ptr::write(result.add(size_len + 1 + len1), ':' as u8);
+                ptr::write(result.add(size_len + 2 + len1), ' ' as u8);
+                ptr::copy_nonoverlapping(msg2.data(), result.add(size_len + 3 + len1), len2);
             }
             Self { state: result }
         }
@@ -138,20 +137,20 @@ impl Status {
         if self.state.is_null() {
             Code::Ok
         } else {
-            unsafe { (*self.state.add(4)).into() }
+            let size_len = std::mem::size_of::<usize>();
+            unsafe { (*self.state.add(size_len)).into() }
         }
     }
     fn copy_state(s: *const u8) -> *const u8 {
         let size: usize = 0;
         unsafe {
-            ptr::copy_nonoverlapping(
-                s,
-                &size as *const usize as *const u8 as *mut u8,
-                std::mem::size_of_val(&size),
+            let size_len = std::mem::size_of::<usize>();
+            ptr::copy_nonoverlapping(s, &size as *const usize as *const u8 as *mut u8, size_len);
+            let result = alloc(
+                Layout::from_size_align(size + size_len + 1, std::mem::align_of::<*mut u8>())
+                    .unwrap(),
             );
-            let result =
-                alloc(Layout::from_size_align(size + 5, std::mem::align_of::<*mut u8>()).unwrap());
-            ptr::copy_nonoverlapping(s, result, size + 5);
+            ptr::copy_nonoverlapping(s, result, size + size_len + 1);
             result
         }
     }
@@ -159,17 +158,21 @@ impl Status {
 impl Drop for Status {
     fn drop(&mut self) {
         // ptr::drop_in_place(self.state);
-        unsafe {
-            let size: usize = 0;
-            ptr::copy_nonoverlapping(
-                self.state,
-                &size as *const usize as *const u8 as *mut u8,
-                std::mem::size_of_val(&size),
-            );
-            dealloc(
-                self.state as *mut u8,
-                Layout::from_size_align(size + 5, std::mem::align_of::<*mut u8>()).unwrap(),
-            )
+        if !self.state.is_null() {
+            unsafe {
+                let size_len = std::mem::size_of::<usize>();
+                let size: usize = 0;
+                ptr::copy_nonoverlapping(
+                    self.state,
+                    &size as *const usize as *const u8 as *mut u8,
+                    size_len,
+                );
+                dealloc(
+                    self.state as *mut u8,
+                    Layout::from_size_align(size + size_len + 1, std::mem::align_of::<*mut u8>())
+                        .unwrap(),
+                )
+            }
         }
     }
 }
@@ -198,15 +201,29 @@ impl Display for Status {
             write!(f, "OK")
         } else {
             let desc: String = unsafe {
+                let size_len = std::mem::size_of::<usize>();
                 let size: usize = 0;
                 ptr::copy_nonoverlapping(
                     self.state,
                     &size as *const usize as *const u8 as *mut u8,
-                    std::mem::size_of_val(&size),
+                    size_len,
                 );
-                Slice::new(self.state.add(5), size).into()
+                Slice::new(self.state.add(size_len + 1), size).into()
             };
             write!(f, "{}{}", self.code(), desc)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status() {
+        let s = Status::ok();
+        assert_eq!(s.to_string(), "OK");
+        let s = Status::not_found2(&Slice::from_str("aa"), &Slice::from_str("bb"));
+        assert_eq!(s.to_string(), "Not Found: aa: bb");
     }
 }
