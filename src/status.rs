@@ -53,60 +53,60 @@ impl Display for Code {
     }
 }
 
-struct Status {
+pub struct Status {
     state: *const u8,
 }
 impl Status {
-    fn ok() -> Self {
+    pub fn ok() -> Self {
         Self::default()
     }
-    fn not_found(msg: &Slice) -> Self {
+    pub fn not_found(msg: &Slice) -> Self {
         Self::build(Code::NotFound, msg, &Slice::default())
     }
-    fn not_found2(msg: &Slice, msg2: &Slice) -> Self {
+    pub fn not_found2(msg: &Slice, msg2: &Slice) -> Self {
         Self::build(Code::NotFound, msg, msg2)
     }
-    fn corruption(msg: &Slice) -> Self {
+    pub fn corruption(msg: &Slice) -> Self {
         Self::build(Code::Corruption, msg, &Slice::default())
     }
-    fn corruption2(msg: &Slice, msg2: &Slice) -> Self {
+    pub fn corruption2(msg: &Slice, msg2: &Slice) -> Self {
         Self::build(Code::Corruption, msg, msg2)
     }
-    fn not_supported(msg: &Slice) -> Self {
+    pub fn not_supported(msg: &Slice) -> Self {
         Self::build(Code::NotSupported, msg, &Slice::default())
     }
-    fn not_supported2(msg: &Slice, msg2: &Slice) -> Self {
+    pub fn not_supported2(msg: &Slice, msg2: &Slice) -> Self {
         Self::build(Code::NotSupported, msg, msg2)
     }
-    fn invalid_argument(msg: &Slice) -> Self {
+    pub fn invalid_argument(msg: &Slice) -> Self {
         Self::build(Code::InvalidArgument, msg, &Slice::default())
     }
-    fn invalid_argument2(msg: &Slice, msg2: &Slice) -> Self {
+    pub fn invalid_argument2(msg: &Slice, msg2: &Slice) -> Self {
         Self::build(Code::InvalidArgument, msg, msg2)
     }
-    fn io_error(msg: &Slice) -> Self {
+    pub fn io_error(msg: &Slice) -> Self {
         Self::build(Code::IOError, msg, &Slice::default())
     }
-    fn io_error2(msg: &Slice, msg2: &Slice) -> Self {
+    pub fn io_error2(msg: &Slice, msg2: &Slice) -> Self {
         Self::build(Code::IOError, msg, msg2)
     }
 
-    fn is_ok(&self) -> bool {
+    pub fn is_ok(&self) -> bool {
         self.state.is_null()
     }
-    fn is_not_found(&self) -> bool {
+    pub fn is_not_found(&self) -> bool {
         self.code() == Code::NotFound
     }
-    fn is_corruption(&self) -> bool {
+    pub fn is_corruption(&self) -> bool {
         self.code() == Code::Corruption
     }
-    fn is_not_supported(&self) -> bool {
+    pub fn is_not_supported(&self) -> bool {
         self.code() == Code::NotSupported
     }
-    fn is_invalid_argument(&self) -> bool {
+    pub fn is_invalid_argument(&self) -> bool {
         self.code() == Code::InvalidArgument
     }
-    fn is_io_error(&self) -> bool {
+    pub fn is_io_error(&self) -> bool {
         self.code() == Code::IOError
     }
 }
