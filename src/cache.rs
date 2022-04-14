@@ -306,6 +306,7 @@ impl LRUCacheInner {
             if (*e).refs == 0 {
                 assert!(!(*e).in_cache);
                 ((*e).deleter)(&(*e).key(), (*e).value);
+                ptr::drop_in_place(&mut (*e).deleter as *mut DeleterFn);
                 dealloc(e as *mut u8, LRUHandle::get_layout((*e).key_length));
             } else if (*e).in_cache && (*e).refs == 1 {
                 self.lru_remove(e);
