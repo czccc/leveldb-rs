@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::slice::Slice;
-type DeleterFn = Box<dyn FnMut(&Slice, *mut u8) -> ()>;
+type DeleterFn = Box<dyn FnMut(&Slice, *mut u8)>;
 
 pub fn new_lru_cache(capacity: usize) -> Box<dyn Cache> {
     Box::new(ShardedLRUCache::new(capacity))
@@ -128,7 +128,9 @@ impl HandleTable {
     }
     fn find_pointer(&mut self, key: &Slice, hash: u32) -> *mut *mut LRUHandle {
         unsafe {
-            let mut p = self.list.get_unchecked_mut(hash as usize & self.length - 1);
+            let mut p = self
+                .list
+                .get_unchecked_mut(hash as usize & (self.length - 1));
             while !p.is_null() && ((**p).hash != hash || &(**p).key() != key) {
                 p = &mut (**p).next_hash
             }
@@ -352,10 +354,9 @@ struct LRUCache {
 
 impl LRUCache {
     pub fn new() -> Self {
-        let r = Self {
+        Self {
             inner: Mutex::new(LRUCacheInner::new()),
-        };
-        r
+        }
     }
     pub fn lookup(&mut self, key: &Slice, hash: u32) -> *mut Handle {
         let mut inner = self.inner.lock().unwrap();
@@ -413,10 +414,9 @@ impl LRUCache {
 }
 impl Default for LRUCache {
     fn default() -> Self {
-        let r = Self {
+        Self {
             inner: Mutex::new(LRUCacheInner::new()),
-        };
-        r
+        }
     }
 }
 
@@ -526,7 +526,7 @@ mod tests {
     }
     fn deleter(key: &Slice, value: *mut u8) {
         let v = decode_value(value);
-        assert_eq!(v, v);
+        // assert_eq!(v, v);
     }
     const CACHE_SIZE: usize = 1000;
     // const DELETED_KEYS: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
@@ -704,8 +704,8 @@ mod tests {
         for i in 0..h.len() {
             assert_eq!(2000 + i as i32, test.lookup(1000 + i as u32));
         }
-        for i in 0..h.len() {
-            test.cache.release(h[i]);
+        for item in h {
+            test.cache.release(item);
         }
     }
     #[test]

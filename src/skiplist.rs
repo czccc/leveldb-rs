@@ -302,7 +302,7 @@ mod tests {
         }
         for i in (MAX_HEIGHT / 2)..MAX_HEIGHT {
             assert!(unsafe { &*node1 }.next(i) == node3);
-            assert!(unsafe { &*node2 }.next(i) == ptr::null_mut());
+            assert!(unsafe { &*node2 }.next(i).is_null());
         }
         unsafe {
             ptr::drop_in_place(&mut (*node1).key);
@@ -343,7 +343,7 @@ mod tests {
             }
         }
         let mut keys = keys.into_iter().collect::<Vec<u32>>();
-        keys.sort();
+        keys.sort_unstable();
 
         for i in 0..R {
             if list.contains(&i) {
@@ -357,10 +357,10 @@ mod tests {
             assert!(!iter.valid());
             iter.seek(&0);
             assert!(iter.valid());
-            assert!(iter.key() == keys.iter().nth(0).unwrap());
+            assert!(iter.key() == keys.get(0).unwrap());
             iter.seek_to_first();
             assert!(iter.valid());
-            assert!(iter.key() == keys.iter().nth(0).unwrap());
+            assert!(iter.key() == keys.get(0).unwrap());
             iter.seek_to_last();
             assert!(iter.valid());
             assert!(iter.key() == keys.iter().last().unwrap());
@@ -410,7 +410,7 @@ mod tests {
             }
         }
         let mut keys = keys.into_iter().collect::<Vec<u32>>();
-        keys.sort();
+        keys.sort_unstable();
 
         for i in 0..R {
             if list.contains(&format!("{:06}", i)) {
@@ -424,10 +424,10 @@ mod tests {
             assert!(!iter.valid());
             iter.seek(&format!("{:06}", 0));
             assert!(iter.valid());
-            assert!(iter.key() == &format!("{:06}", keys.iter().nth(0).unwrap()));
+            assert!(iter.key() == &format!("{:06}", keys.get(0).unwrap()));
             iter.seek_to_first();
             assert!(iter.valid());
-            assert!(iter.key() == &format!("{:06}", keys.iter().nth(0).unwrap()));
+            assert!(iter.key() == &format!("{:06}", keys.get(0).unwrap()));
             iter.seek_to_last();
             assert!(iter.valid());
             assert!(iter.key() == &format!("{:06}", keys.iter().last().unwrap()));
@@ -464,7 +464,6 @@ mod tests {
 
 #[cfg(test)]
 mod concurrent_tests {
-    use rand;
     use std::{
         collections::hash_map::DefaultHasher,
         hash::{Hash, Hasher},
@@ -603,9 +602,9 @@ mod concurrent_tests {
     }
     #[derive(PartialEq)]
     enum ReaderState {
-        STARTING,
-        RUNNING,
-        DONE,
+        Starting,
+        Running,
+        Done,
     }
     struct TestState {
         t: ConcurrentTest,
@@ -620,7 +619,7 @@ mod concurrent_tests {
                 t: ConcurrentTest::new(),
                 seed: s,
                 quit_flag: AtomicBool::new(false),
-                state: Arc::new(Mutex::new(ReaderState::STARTING)),
+                state: Arc::new(Mutex::new(ReaderState::Starting)),
                 state_cv: Condvar::new(),
             }
         }
@@ -641,12 +640,12 @@ mod concurrent_tests {
         // let state = arg;
         let mut rnd = Random::new(state.seed as u32);
         let mut reads = 0;
-        state.change(ReaderState::RUNNING);
+        state.change(ReaderState::Running);
         while !state.quit_flag.load(Ordering::Acquire) {
             state.t.read_step(&mut rnd);
             reads += 1;
         }
-        state.change(ReaderState::DONE);
+        state.change(ReaderState::Done);
     }
     fn run_concurrent(run: usize) {
         let seed: usize = rand::random::<usize>() + (run * 100);
@@ -662,12 +661,12 @@ mod concurrent_tests {
             let _t = thread::spawn(move || {
                 concurrent_reader(state_);
             });
-            state.wait(ReaderState::RUNNING);
+            state.wait(ReaderState::Running);
             for _ in 0..SIZE {
                 state.t.write_step(&mut rnd);
             }
             state.quit_flag.store(true, Ordering::Release);
-            state.wait(ReaderState::DONE);
+            state.wait(ReaderState::Done);
             _t.join().unwrap();
         }
     }

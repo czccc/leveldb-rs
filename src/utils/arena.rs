@@ -123,26 +123,26 @@ mod tests {
         let mut rnd = Random::new(301);
 
         for i in 0..N {
-            let mut s: usize;
-            if i % (N / 10) == 0 {
-                s = i;
-            } else {
-                s = match rnd.one_in(4000) {
-                    true => rnd.uniform(6000),
-                    false => match rnd.one_in(10) {
-                        true => rnd.uniform(100),
-                        false => rnd.uniform(20),
-                    },
-                } as usize;
-            }
+            let mut s: usize = {
+                if i % (N / 10) == 0 {
+                    i
+                } else {
+                    (match rnd.one_in(4000) {
+                        true => rnd.uniform(6000),
+                        false => match rnd.one_in(10) {
+                            true => rnd.uniform(100),
+                            false => rnd.uniform(20),
+                        },
+                    }) as usize
+                }
+            };
             if s == 0 {
                 s = 1;
             }
-            let r;
-            match rnd.one_in(10) {
-                true => r = arena.alloc_aligned(s),
-                false => r = arena.alloc(s),
-            }
+            let r = match rnd.one_in(10) {
+                true => arena.alloc_aligned(s),
+                false => arena.alloc(s),
+            };
             for b in 0..s {
                 unsafe { r.add(b).write((i % 256) as u8) };
             }
@@ -153,9 +153,8 @@ mod tests {
                 assert!(arena.memory_usage() as f32 <= (bytes as f32) * 1.1);
             }
         }
-        for i in 0..allocated.len() {
-            let (num_bytes, p) = allocated[i];
-            for b in 0..num_bytes {
+        for (i, (num_bytes, p)) in allocated.iter().enumerate() {
+            for b in 0..*num_bytes {
                 assert_eq!(unsafe { p.add(b).read() }, (i % 256) as u8);
             }
         }

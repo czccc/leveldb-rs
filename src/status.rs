@@ -126,8 +126,8 @@ impl Status {
             ptr::write(result.add(size_len), code.into());
             ptr::copy_nonoverlapping(msg.data(), result.add(size_len + 1), len1);
             if len2 != 0 {
-                ptr::write(result.add(size_len + 1 + len1), ':' as u8);
-                ptr::write(result.add(size_len + 2 + len1), ' ' as u8);
+                ptr::write(result.add(size_len + 1 + len1), b':');
+                ptr::write(result.add(size_len + 2 + len1), b' ');
                 ptr::copy_nonoverlapping(msg2.data(), result.add(size_len + 3 + len1), len2);
             }
             Self { state: result }
